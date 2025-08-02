@@ -2,7 +2,7 @@
 // @name         AMQ Song List UI Cory Addon
 // @namespace    https://github.com/corydoras702
 // @version      1.0
-// @description  Addon for AMQ Song List UI cory edited - adds libraryMaster download and enhanced JSON export
+// @description  Addon for AMQ Song List UI addon - adds libraryMaster download and enhanced JSON export
 // @author       corydoras702
 // @match        https://animemusicquiz.com/*
 // @grant        none
