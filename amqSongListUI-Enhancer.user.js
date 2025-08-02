@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         AMQ Song List UI Cory Addon
+// @name         AMQ Song List UI Enhancer
 // @namespace    https://github.com/corydoras702
 // @version      1.0
 // @description  Addon for AMQ Song List UI addon - adds libraryMaster download and enhanced JSON export
