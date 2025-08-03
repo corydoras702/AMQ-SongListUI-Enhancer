@@ -23,7 +23,7 @@ let addonLoadInterval = setInterval(() => {
 }, 1000);
 
 let libraryButton;
-let enhancedSongData = new Map(); // songNumberをキーとして追加データを保存
+let pendingEnhancements = new Map();
 
 function setupAddon() {
     console.log("AMQ Song List UI Addon loading...");
@@ -84,35 +84,77 @@ function createLibraryButton(masterList) {
 // 追加のsongデータを収集
 function addEnhancedDataListener() {
     let enhancedAnswerResultsListener = new Listener("answer results", (result) => {
+        // イベント固有IDを生成（タイムスタンプ + ランダム値）
+        let eventId = Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+        
+        // 拡張データを一時保存
+        pendingEnhancements.set(eventId, {
+            typeNumber: result.songInfo.typeNumber,
+            altAnimeNames: result.songInfo.altAnimeNames,
+            altAnimeNamesAnswers: result.songInfo.altAnimeNamesAnswers,
+            artistInfo: result.songInfo.artistInfo,
+            composerInfo: result.songInfo.composerInfo,
+            arrangerInfo: result.songInfo.arrangerInfo,
+            typeRaw: result.songInfo.type,
+            difficultyRaw: result.songInfo.animeDifficulty,
+            // 楽曲識別用データ
+            songIdentifier: {
+                name: result.songInfo.songName,
+                artist: result.songInfo.artist,
+                annId: result.songInfo.annId
+            }
+        });
+        
         setTimeout(() => {
-            let songNumber = parseInt($("#qpCurrentSongCount").text());
-            
-            // 追加データを収集
-            let enhancedData = {
-                // 追加項目
-                typeNumber: result.songInfo.typeNumber,
-                altAnimeNames: result.songInfo.altAnimeNames,
-                altAnimeNamesAnswers: result.songInfo.altAnimeNamesAnswers,
-                artistInfo: result.songInfo.artistInfo,
-                composerInfo: result.songInfo.composerInfo,
-                arrangerInfo: result.songInfo.arrangerInfo,
-                
-                // 元のamqSongListUIとの違い
-                // type処理: 元は文字列変換、こちらは数値のまま
-                typeRaw: result.songInfo.type,
-                typeFormatted: result.songInfo.type === 3 ? "Insert Song" : (result.songInfo.type === 2 ? "Ending " + result.songInfo.typeNumber : "Opening " + result.songInfo.typeNumber),
-                
-                // difficulty処理: 元は.toFixed(1)、こちらはそのまま
-                difficultyRaw: result.songInfo.animeDifficulty,
-                difficultyFormatted: typeof result.songInfo.animeDifficulty === "string" ? "Unrated" : result.songInfo.animeDifficulty.toFixed(1)
-            };
-            
-            // songNumberをキーとして追加データを保存
-            enhancedSongData.set(songNumber, enhancedData);
-        }, 0);
+            applyPendingEnhancements(eventId);
+        }, 100);
+        
+        // 5秒後に未処理のデータをクリーンアップ
+        setTimeout(() => {
+            pendingEnhancements.delete(eventId);
+        }, 5000);
     });
     
     enhancedAnswerResultsListener.bindListener();
+}
+
+// 保留中の拡張データを適用
+function applyPendingEnhancements(eventId) {
+    if (!pendingEnhancements.has(eventId)) return;
+    
+    let enhancedData = pendingEnhancements.get(eventId);
+    let songId = enhancedData.songIdentifier;
+    
+    // exportDataから一致する楽曲を逆順検索（最新から）
+    for (let i = exportData.length - 1; i >= 0; i--) {
+        let song = exportData[i];
+        
+        // 楽曲の一致確認
+        if (song.name === songId.name && 
+            song.artist === songId.artist && 
+            song.annId === songId.annId && 
+            !song._enhanced) {
+            
+            // 拡張データを適用
+            song.typeNumber = enhancedData.typeNumber;
+            song.altAnimeNames = enhancedData.altAnimeNames;
+            song.altAnimeNamesAnswers = enhancedData.altAnimeNamesAnswers;
+            song.artistInfo = enhancedData.artistInfo;
+            song.composerInfo = enhancedData.composerInfo;
+            song.arrangerInfo = enhancedData.arrangerInfo;
+            song.typeRaw = enhancedData.typeRaw;
+            song.difficultyRaw = enhancedData.difficultyRaw;
+            song._enhanced = true; // 処理済みマーク
+            
+            pendingEnhancements.delete(eventId);
+            return;
+        }
+    }
+    
+    // 一致する楽曲が見つからない場合は後で再試行
+    setTimeout(() => {
+        applyPendingEnhancements(eventId);
+    }, 200);
 }
 
 // JSON Export機能を拡張
@@ -127,10 +169,8 @@ function enhanceJSONExport() {
 }
 
 function enhancedExportSongData() {
-    // bot対応形式でのエクスポート
+    // exportDataから拡張exportDataデータを作成
     let enhancedData = exportData.map(song => {
-        let additionalData = enhancedSongData.get(song.songNumber) || {};
-        
         return {
             gameMode: song.gameMode,
             name: song.name,  
@@ -141,26 +181,26 @@ function enhancedExportSongData() {
             activePlayers: song.activePlayers,
             totalPlayers: song.totalPlayers,
             
-            type: additionalData.typeRaw || song.type,
-            typeNumber: additionalData.typeNumber,
+            type: song.typeRaw || song.type, // 数値形式を優先
+            typeNumber: song.typeNumber,
             urls: song.urls,
             siteIds: song.siteIds,
             
-            difficulty: additionalData.difficultyRaw || song.difficulty,
+            difficulty: song.difficultyRaw || song.difficulty, // 数値形式を優先
             animeType: song.animeType,
             animeScore: song.animeScore,
             vintage: song.vintage,
             tags: song.tags,
             genre: song.genre,
             
-            altAnimeNames: additionalData.altAnimeNames || song.altAnimeNames,
-            altAnimeNamesAnswers: additionalData.altAnimeNamesAnswers || song.altAnimeNamesAnswers,
+            altAnimeNames: song.altAnimeNames || [],
+            altAnimeNamesAnswers: song.altAnimeNamesAnswers || [],
             startSample: song.startSample,
             videoLength: song.videoLength,
             
-            artistInfo: additionalData.artistInfo,
-            composerInfo: additionalData.composerInfo,
-            arrangerInfo: additionalData.arrangerInfo,
+            artistInfo: song.artistInfo,
+            composerInfo: song.composerInfo,
+            arrangerInfo: song.arrangerInfo,
             players: song.players,
             fromList: song.fromList,
             correct: song.correct,
